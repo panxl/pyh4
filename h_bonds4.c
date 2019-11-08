@@ -55,6 +55,22 @@ typedef struct {
 	int	e;
 } atom_t;
 
+// H4 parameters
+typedef struct {
+	// H4 correction
+	double	para_oh_o;
+	double	para_oh_n;
+	double	para_nh_o;
+	double	para_nh_n;
+	double	multiplier_wh_o;
+	double	multiplier_nh4;
+	double	multiplier_coo;
+	// HH repulsion
+	double	hh_rep_k;
+	double	hh_rep_e;
+	double	hh_rep_r0;
+} para_t;
+
 //==============================================================================
 // Tabular data
 //==============================================================================
@@ -100,24 +116,6 @@ const double covalent_radii[119] = {0.0, 0.37, 0.32, 1.34, 0.9, 0.82, 0.77,
 #define HB_R_0 1.5
 // max. X-H covalent bond distance
 #define MAX_XH_BOND 1.15
-
-//==============================================================================
-// Parameters (For PM6-D3)
-//==============================================================================
-
-// H4 correction
-const double para_oh_o = 2.32;
-const double para_oh_n = 3.10;
-const double para_nh_o = 1.07;
-const double para_nh_n = 2.01;
-const double multiplier_wh_o = 0.42;
-const double multiplier_nh4 = 3.61;
-const double multiplier_coo = 1.41;
-
-// HH repulsion
-const double hh_rep_k = 0.4;
-const double hh_rep_e = 12.7;
-const double hh_rep_r0 = 2.3;
 
 //==============================================================================
 // Geometry read/write
@@ -294,7 +292,7 @@ void coord_add(coord_t *coord, int i, coord_t add) {
 // H4 correction calculation
 //==============================================================================
 
-double energy_corr_h4(int natom, atom_t *geo, coord_t *grad) {
+double energy_corr_h4(int natom, atom_t *geo, coord_t *grad, para_t para) {
 	double e_corr_sum = 0; // correction energy
 	int do_grad = 1;
 
@@ -444,10 +442,10 @@ double energy_corr_h4(int natom, atom_t *geo, coord_t *grad) {
 						}
 
 						// Energy coefficient
-						if (geo[d_i].e == OXYGEN && geo[a_i].e == OXYGEN)     e_para = para_oh_o;
-						if (geo[d_i].e == OXYGEN && geo[a_i].e == NITROGEN)   e_para = para_oh_n;
-						if (geo[d_i].e == NITROGEN && geo[a_i].e == OXYGEN)   e_para = para_nh_o;
-						if (geo[d_i].e == NITROGEN && geo[a_i].e == NITROGEN) e_para = para_nh_n;
+						if (geo[d_i].e == OXYGEN && geo[a_i].e == OXYGEN)     e_para = para.para_oh_o;
+						if (geo[d_i].e == OXYGEN && geo[a_i].e == NITROGEN)   e_para = para.para_oh_n;
+						if (geo[d_i].e == NITROGEN && geo[a_i].e == OXYGEN)   e_para = para.para_nh_o;
+						if (geo[d_i].e == NITROGEN && geo[a_i].e == NITROGEN) e_para = para.para_nh_n;
 
 						// Bond switching
 						if (rdh > 1.15) {
@@ -505,7 +503,7 @@ double energy_corr_h4(int natom, atom_t *geo, coord_t *grad) {
 							// If it is water
 							if (hydrogens >= 1.0 ) {
 								sign_wat = 1.0;
-								slope = multiplier_wh_o - 1.0;
+								slope = para.multiplier_wh_o - 1.0;
 								v = hydrogens;
 								fv = 0.0;
 								if (v > 1.0 && v <= 2.0) {
@@ -529,7 +527,7 @@ double energy_corr_h4(int natom, atom_t *geo, coord_t *grad) {
 
 						// Scaled groups: NR4+
 						if (1 && geo[d_i].e == NITROGEN) {
-							slope = multiplier_nh4 - 1.0;
+							slope = para.multiplier_nh4 - 1.0;
 							v = 0.0;
 							for (k = 0; k < natom; k++) v += cvalence_contribution(geo[d_i], geo[k]);
 							if (v > 3.0) v = v - 3.0; else v = 0.0;
@@ -545,7 +543,7 @@ double energy_corr_h4(int natom, atom_t *geo, coord_t *grad) {
 						o2 = -1;
 						cc = -1;
 						if (geo[a_i].e == OXYGEN) {
-							slope = multiplier_coo - 1.0;
+							slope = para.multiplier_coo - 1.0;
 
 							// Search for closest C atom
 							double cdist = 9.9e9;
@@ -612,7 +610,7 @@ double energy_corr_h4(int natom, atom_t *geo, coord_t *grad) {
 						coord_add(grad, h_i, coord_scale(d_bs_h, e_para * e_radial * e_angular * e_scale_w * e_scale_chd * e_scale_cha));
 						// water scaling
 						if (do_grad && e_scale_w != 1.0) {
-							slope = multiplier_wh_o - 1.0;
+							slope = para.multiplier_wh_o - 1.0;
 							for (k = 0; k < natom; k++) { if (k != d_i) {
 								x = distance(geo[d_i], geo[k]);
 								if (geo[k].e == HYDROGEN) {
@@ -634,7 +632,7 @@ double energy_corr_h4(int natom, atom_t *geo, coord_t *grad) {
 						}
 						// scaled groups: NR4+
 						if (do_grad && e_scale_chd != 1.0) {
-							slope = multiplier_nh4 - 1.0;
+							slope = para.multiplier_nh4 - 1.0;
 							for (k = 0; k < natom; k++) {
 									if (k != d_i) {
 									x = distance(geo[d_i], geo[k]);
@@ -649,7 +647,7 @@ double energy_corr_h4(int natom, atom_t *geo, coord_t *grad) {
 						}
 						// scaled groups: COO-
 						if (do_grad && f_o1 * f_o2 * f_cc != 0.0) {
-							slope = multiplier_coo - 1.0;
+							slope = para.multiplier_coo - 1.0;
 							// Atoms around O1
 							for (k = 0; k < natom; k++) { if (k != o1) {
 								xd = cvalence_contribution_d(geo[o1], geo[k]);
@@ -664,7 +662,7 @@ double energy_corr_h4(int natom, atom_t *geo, coord_t *grad) {
 									coord_add(grad, k, coord_scale(g, e_para * e_radial * e_angular * e_bond_switch * e_scale_chd * e_scale_w));
 								}
 							}}
-							slope = multiplier_coo - 1.0;
+							slope = para.multiplier_coo - 1.0;
 							// Atoms around O2
 							for (k = 0; k < natom; k++) { if (k != o2) {
 								xd = cvalence_contribution_d(geo[o2], geo[k]);
@@ -679,7 +677,7 @@ double energy_corr_h4(int natom, atom_t *geo, coord_t *grad) {
 									coord_add(grad, k, coord_scale(g, e_para * e_radial * e_angular * e_bond_switch * e_scale_chd * e_scale_w));
 								}
 							}}
-							slope = multiplier_coo - 1.0;
+							slope = para.multiplier_coo - 1.0;
 							for (k = 0; k < natom; k++) { if (k != cc) {
 								xd = cvalence_contribution_d(geo[cc], geo[k]);
 								if (xd != 0.0) {
@@ -707,7 +705,7 @@ double energy_corr_h4(int natom, atom_t *geo, coord_t *grad) {
 // H-H repulsion calculation
 //==============================================================================
 
-double energy_corr_hh_rep(int natom, atom_t *geo, coord_t *grad) {
+double energy_corr_hh_rep(int natom, atom_t *geo, coord_t *grad, para_t para) {
 	double e_corr_sum = 0; // correction energy
 	int i, j; // iteration counters
 	double r;
@@ -721,11 +719,11 @@ double energy_corr_hh_rep(int natom, atom_t *geo, coord_t *grad) {
 		for (j = 0; j < i; j++) { if (geo[j].e == HYDROGEN) {
 			// Calculate distance
 			r = distance(geo[i], geo[j]);
-			e_corr_sum += hh_rep_k * (1.0 - 1.0/(1.0 + exp(-hh_rep_e *(r/hh_rep_r0 - 1.0))));
+			e_corr_sum += para.hh_rep_k * (1.0 - 1.0/(1.0 + exp(-para.hh_rep_e *(r/para.hh_rep_r0 - 1.0))));
 
 			if (do_grad) {
 				// Gradient in the internal coordinate
-				d_rad = (1.0 / pow(1.0 + exp(-hh_rep_e*(r/hh_rep_r0-1.0)), 2) * hh_rep_e/hh_rep_r0 * exp(-hh_rep_e*(r/hh_rep_r0-1.0))) * hh_rep_k;
+				d_rad = (1.0 / pow(1.0 + exp(-para.hh_rep_e*(r/para.hh_rep_r0-1.0)), 2) * para.hh_rep_e/para.hh_rep_r0 * exp(-para.hh_rep_e*(r/para.hh_rep_r0-1.0))) * para.hh_rep_k;
 
 				// Cartesian components of the gradient
 				gx = (geo[i].x - geo[j].x) / r * d_rad;
@@ -764,12 +762,27 @@ int main() {
 	gradient_allocate(natom, &gradient); // Allocate memory for H4 gradient
 	gradient_allocate(natom, &gradient2); // Allocate memory for HH repulsion gradient
 
+	// Parameters (For PM6-D3)
+	para_t para = {
+		.para_oh_o = 2.32,
+		.para_oh_n = 3.10,
+		.para_oh_n = 3.10,
+		.para_nh_o = 1.07,
+		.para_nh_n = 2.01,
+		.multiplier_wh_o = 0.42,
+		.multiplier_nh4 = 3.61,
+		.multiplier_coo = 1.41,
+		.hh_rep_k = 0.4,
+		.hh_rep_e = 12.7,
+		.hh_rep_r0 = 2.3
+	};
+ 
 	// H4 correction
-	energy_h4 = energy_corr_h4(natom, geometry, gradient);
+	energy_h4 = energy_corr_h4(natom, geometry, gradient, para);
 	printf("Hydrogen bonds: %12.6f\n", energy_h4);
 
 	// H-H repulsion
-	energy_hh = energy_corr_hh_rep(natom, geometry, gradient2);
+	energy_hh = energy_corr_hh_rep(natom, geometry, gradient2, para);
 	printf("H-H repulsion:  %12.6f\n", energy_hh);
 
 	// Total energy
