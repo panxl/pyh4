@@ -1,4 +1,5 @@
-from ctypes import Structure, POINTER, c_long, c_double, cdll
+from pathlib import Path
+from ctypes import Structure, POINTER, CDLL, c_long, c_double
 
 import numpy as np
 
@@ -40,7 +41,7 @@ class H4Parameters(Structure):
 
 class H4Library(object):
     def __init__(self):
-        self.library = cdll.LoadLibrary('./libh4.so')
+        self.library = CDLL(Path(__file__).parent.joinpath('libh4.so'))
 
         self.library.energy_corr_h4.argtypes = [
             c_long,
